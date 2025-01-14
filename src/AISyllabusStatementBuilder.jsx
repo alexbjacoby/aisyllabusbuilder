@@ -1,12 +1,37 @@
 import React, { useState } from 'react';
 
-/**
- * This updated version uses Tailwind CSS for styling (so it's not in Times New Roman by default).
- * It also implements a "wizard" format: only one category (question set) is shown at a time.
- * Users can navigate through categories via next/previous buttons.
- * Finally, once they reach the end, they can click "Preview Draft Statement"
- * to generate the final statement in bold dark-red text as a single paragraph.
- */
+/*
+  AISyllabusStatementBuilder
+  ------------------------------------------------------------
+  Updates requested:
+  1. Rationale step (step 5) now has four major options:
+     - "Students are allowed to use AI tools freely as they choose because…"
+     - "Students are only allowed to use AI tools in limited ways described below because…"
+     - "Students are not allowed to use AI tools, except when certain conditions are met as described below because…"
+     - "Students are not allowed to use specified AI tools because…"
+  
+     When they choose the first option, show a set of 6 sub-options:
+       - "The students in this course have strong learning skills and have shown themselves to be responsible, effective, self-directed learners."
+       - "I’ve designed robust assessments and learning activities in this course that have value regardless of the use of chatbots."
+       - "The use of chatbots aligns with the goals of the course in a way that enhances learning."
+       - "I consider learning to use AI tools an important skill in the discipline."
+       - "Students are informed about AI, its risks and benefits, and can decide for themselves if and how they would use AI tools."
+       - "Other:"
+
+     These sub-options will be checkboxes so users can pick multiple reasons.
+  
+  2. Add a "Copy this statement" button on the final preview page (step 9),
+     which copies the final statement to clipboard.
+  
+  3. Display the CalArts logo (from the provided SVG URL) at the top of each page:
+     <img src="https://upload.wikimedia.org/wikipedia/commons/d/d7/Calarts_logo.svg" alt="CalArts Logo" />
+  
+  This is a single React component with Tailwind classes,
+  ensuring no arbitrary width/height overrides. 
+  Everything is contained in one file, and the user can
+  navigate through steps. Tailwind must be properly configured
+  in the app for styling to appear.
+*/
 
 function AISyllabusStatementBuilder() {
   // Step-based interface
@@ -18,7 +43,8 @@ function AISyllabusStatementBuilder() {
     appliedTools: [],
     conditions: [],
     processes: [],
-    rationale: "",
+    rationaleCategory: "",   // new "big category" rationale
+    rationaleSub: [],       // sub-options for rationale (only appear if rationaleCategory is first option)
     consequences: "",
     support: "",
     positionStatement: "",
@@ -29,13 +55,17 @@ function AISyllabusStatementBuilder() {
     setSelections((prev) => ({
       ...prev,
       [category]: value,
+      // If the user chooses a different rationaleCategory, reset the sub rationale
+      ...(category === "rationaleCategory" ? { rationaleSub: [] } : {}),
     }));
   };
 
   // Handler for checkbox inputs (multiple choices).
   const handleCheckboxChange = (category, value) => {
     setSelections((prev) => {
-      const currentVals = [...prev[category]];
+      const currentVals = Array.isArray(prev[category])
+        ? [...prev[category]]
+        : [];
       if (currentVals.includes(value)) {
         // Remove if currently selected
         return {
@@ -59,72 +89,92 @@ function AISyllabusStatementBuilder() {
       appliedTools,
       conditions,
       processes,
-      rationale,
+      rationaleCategory,
+      rationaleSub,
       consequences,
       support,
       positionStatement,
     } = selections;
 
-    // Build an array of sentences if there's content, then join them into one paragraph.
     const lines = [];
 
     if (generalPolicy) {
       lines.push(`General policy about AI use in this course: ${generalPolicy}`);
     }
+
     if (appliedTools.length > 0) {
       lines.push(
         `The policy applies to the following AI tools: ${appliedTools.join("; ")}`
       );
     }
+
     if (conditions.length > 0) {
       lines.push(
         `The policy applies only under the following conditions: ${conditions.join("; ")}`
       );
     }
+
     if (processes.length > 0) {
       lines.push(
-        `The following processes are in place regarding students using AI tools: ${processes.join(
-          "; "
-        )}`
+        `The following processes are in place regarding students using AI tools: ${processes.join("; ")}`
       );
     }
-    if (rationale) {
-      lines.push(`The rationale for this policy is: ${rationale}`);
+
+    // Rationale big category
+    if (rationaleCategory) {
+      lines.push(`Rationale for this policy: ${rationaleCategory}`);
+      // If it is the first option, show sub reasons
+      if (
+        rationaleCategory ===
+        "Students are allowed to use AI tools freely as they choose because…"
+      ) {
+        if (rationaleSub && rationaleSub.length > 0) {
+          lines.push(`Reasons include: ${rationaleSub.join("; ")}`);
+        }
+      }
     }
+
     if (consequences) {
-      lines.push(
-        `The following consequences for non-compliance apply: ${consequences}`
-      );
+      lines.push(`The following consequences for non-compliance apply: ${consequences}`);
     }
+
     if (support) {
       lines.push(`Support resources available: ${support}`);
     }
+
     if (positionStatement) {
       lines.push(`Our position on supporting students: ${positionStatement}`);
     }
 
-    // Combine everything into one paragraph, removing any double periods.
-    // We'll just join with a single space, then ensure we add a period at the end.
+    // Combine everything into one paragraph, removing extra periods
     let paragraph = lines.join(" ");
-    // Remove any accidental double or triple periods by replacing "...", ".." with a single "." 
     paragraph = paragraph
       .replace(/\.\.\./g, ".")
       .replace(/\.\./g, ".")
       .trim();
 
     // If the paragraph doesn't end in a period, add one.
-    if (paragraph && !paragraph.endsWith(".")) {
+    if (paragraph && !/[.!?]$/.test(paragraph)) {
       paragraph += ".";
     }
 
     return paragraph;
   };
 
-  // Step content definitions (each step is one category)
+  // STEPS
+  // 1. General policy
+  // 2. The policy applies to the following AI tools
+  // 3. The policy applies only under the following conditions
+  // 4. The following processes are in place
+  // 5. Rationale for this policy (4 big radio categories + sub-options if first is chosen)
+  // 6. The following consequences for non-compliance
+  // 7. The following support resources are available
+  // 8. A statement on supporting students
+  // 9. Preview
   const steps = [
     {
       id: 1,
-      title: "1. General policy about AI use in this course:",
+      title: "General policy about AI use in this course:",
       type: "radio",
       name: "generalPolicy",
       options: [
@@ -137,7 +187,7 @@ function AISyllabusStatementBuilder() {
     },
     {
       id: 2,
-      title: "2. The policy applies to the following AI tools:",
+      title: "The policy applies to the following AI tools:",
       type: "checkbox",
       name: "appliedTools",
       options: [
@@ -150,7 +200,7 @@ function AISyllabusStatementBuilder() {
     },
     {
       id: 3,
-      title: "3. The policy applies only under the following conditions:",
+      title: "The policy applies only under the following conditions:",
       type: "checkbox",
       name: "conditions",
       options: [
@@ -159,7 +209,7 @@ function AISyllabusStatementBuilder() {
         "Only with supervision during class, section, or office hours",
         "Only after students have gained skills for using chatbots effectively",
         "Only by request and with the approval of the instructor or teaching team",
-        "Only with your data. Do not enter private, sensitive, or copyrighted data from this course or others into AI tools without their consent.",
+        "Only with your data. Do not enter private, sensitive, or copyrighted data from this course or others into AI tools.",
         "Only for graded assignments; for non-graded assignments, students may use AI tools",
         "For reflection, studying, and ideation. AI should only be used as a study aid, not to generate content for assignments.",
         "Other:",
@@ -167,7 +217,8 @@ function AISyllabusStatementBuilder() {
     },
     {
       id: 4,
-      title: "4. The following processes are in place regarding students using AI tools:",
+      title:
+        "The following processes are in place regarding students using AI tools:",
       type: "checkbox",
       name: "processes",
       options: [
@@ -187,34 +238,30 @@ function AISyllabusStatementBuilder() {
     },
     {
       id: 5,
-      title: "5. The rationale for this policy is:",
-      type: "radio",
-      name: "rationale",
+      title: "Rationale for this policy:",
+      type: "rationale-step",
+      name: "rationaleCategory",
+      // We'll handle options ourselves in the code below, because it's more complex structure
       options: [
+        "Students are allowed to use AI tools freely as they choose because…",
+        "Students are only allowed to use AI tools in limited ways described below because…",
+        "Students are not allowed to use AI tools, except when certain conditions are met as described below because…",
+        "Students are not allowed to use specified AI tools because…",
+      ],
+      // If the user picks the first option, we show suboptions:
+      subOptions: [
         "The students in this course have strong learning skills and have shown themselves to be responsible, effective, self-directed learners.",
         "I’ve designed robust assessments and learning activities in this course that have value regardless of the use of chatbots.",
         "The use of chatbots aligns with the goals of the course in a way that enhances learning.",
         "I consider learning to use AI tools an important skill in the discipline.",
         "Students are informed about AI, its risks and benefits, and can decide for themselves if and how they would use AI tools.",
-        "Students need to first develop their AI literacy skills to demonstrate they can use chatbots effectively and responsibly.",
-        "Chatbots would enhance learning in certain specific situations but could be a detriment outside of those situations.",
-        "The teaching team only has enough resources to support students working with chatbots in limited ways.",
-        "Students first need to understand issues around privacy and data security and consent to using a chatbot.",
-        "It could enhance learning for certain students in unique circumstances but otherwise would likely inhibit learning.",
-        "It depends on the individual student's goals, situation, skills, and needs that need to be evaluated on a case-by-case basis.",
-        "As AI tools rapidly evolve, the teaching team needs more time to adapt the course to properly support students.",
-        "Content in this course is private, sensitive, or copyrighted, and should not be entered into a chatbot.",
-        "This course relies on pedagogic strategies that would be significantly undermined by allowing students to use AI tools.",
-        "The course teaches skills that should be first mastered without the use of AI tools as a foundation for future learning.",
-        "The assessments in this course require students to submit completely original work to provide useful feedback and accurately evaluate learning.",
-        "The university and this course currently cannot provide secure and equitable access to the specified AI tools, so it would be unfair if only certain students could afford access.",
         "Other:",
       ],
     },
     {
       id: 6,
       title:
-        "6. The following consequences for non-compliance with this policy apply:",
+        "The following consequences for non-compliance with this policy apply:",
       type: "radio",
       name: "consequences",
       options: [
@@ -224,7 +271,7 @@ function AISyllabusStatementBuilder() {
     },
     {
       id: 7,
-      title: "7. The following support resources are available:",
+      title: "The following support resources are available:",
       type: "radio",
       name: "support",
       options: [
@@ -236,15 +283,15 @@ function AISyllabusStatementBuilder() {
     {
       id: 8,
       title:
-        "8. The following statement expresses our position on supporting students:",
+        "This statement expresses our position on supporting students:",
       type: "radio",
       name: "positionStatement",
       options: [
-        "If you as a student are struggling and feeling too much pressure in this course, please don't resort to chatbots as a shortcut to completing assignments. Many CalArts students feel stressed and pressured. It is completely natural, as this is a challenging course and the university can be a high-pressure environment. But there are a lot of support resources available to you, and I believe that you can succeed here. Please contact me anytime and let's talk about it. I am open to extending due dates or adjusting the assignments to fit your situation. I will work with you to support your success in this course!",
-        "A major goal for this course is for you to develop your creative voice and style. I want to know what you think, not what a chatbot thinks. If you are interested in using AI tools, I want you to be critical of them. These tools can be useful but also have significant shortcomings that are worth examining. Don’t let AI do the thinking for you or settle for generic AI content. It is important in our field to champion human voices and to be critical of how power is structured in society. My door is always open and I welcome you to reach out to me anytime to discuss how you might address AI in your work in this course.",
-        "We recognize that you may have concerns about privacy and security, or have ethical or other reasons why you do not want to use AI tools in this class. This is completely understandable and we respect your choices. I and the teaching team are here to help you succeed in this course. Please email, visit office hours, or speak to me at any time so we can help you. I can accommodate or adapt course assignments for most students' situations. In the instances where I cannot, I can connect you to other campus resources that can help you.",
-        "Generative AI tools can be helpful in our work in this course. But using these powerful tools comes with a lot of responsibility. I trust that you will hold yourselves to the highest standards of professionalism when using AI tools in our course. That means being transparent about using AI and submitting work that has original ideas and holds up the high standards of our university. Also, I trust that you will take responsibility for your interactions with AI. If AI generates something inaccurate, plagiarized, biased, offensive, unethical, or incorrectly attributed, I expect you to identify and address it. This is all to prepare you for future success as an academic scholar. I have so much faith in you! We are a community of learners who support each other, so please contact me anytime to talk about how we use AI tools in this course.",
-        "Fairness and reciprocity between you and me are important to build a positive learning environment for us all. Thoughtful and responsible use of generative AI technology applies to everyone in this course, including me. I commit to following these same practices and policies when it comes to using AI tools for my work as a teacher in this course.",
+        "If you as a student are struggling and feeling too much pressure in this course, please don't resort to chatbots as a shortcut...",
+        "A major goal for this course is for you to develop your creative voice and style. I want to know what you think...",
+        "We recognize that you may have concerns about privacy and security, or have ethical or other reasons why you do not want to use AI tools in this class...",
+        "Generative AI tools can be helpful in our work in this course. But using these powerful tools comes with a lot of responsibility...",
+        "Fairness and reciprocity between you and me are important to build a positive learning environment for us all...",
       ],
     },
   ];
@@ -263,74 +310,123 @@ function AISyllabusStatementBuilder() {
   };
 
   const onPreviewClick = () => {
-    // Move to a special preview "step" beyond the normal steps (e.g., step 9)
     setCurrentStep(9);
+  };
+
+  // Copy-to-clipboard
+  const handleCopyStatement = async () => {
+    try {
+      await navigator.clipboard.writeText(generateParagraph());
+      alert("Statement copied to clipboard!");
+    } catch (err) {
+      alert("Failed to copy statement. Please copy manually.");
+    }
   };
 
   // RENDER
   return (
     <div className="font-sans bg-gray-100 min-h-screen p-4">
-      <div className="max-w-2xl mx-auto bg-white rounded shadow p-6">
-        <h1 className="text-2xl font-bold mb-4">AI Syllabus Statement Builder</h1>
+      <div className="max-w-3xl mx-auto bg-white rounded shadow p-6">
+        {/* CalArts logo at top of each page */}
+        <div className="flex justify-center mb-4">
+          <img
+            src="https://upload.wikimedia.org/wikipedia/commons/d/d7/Calarts_logo.svg"
+            alt="CalArts Logo"
+            className="w-32 h-auto"
+          />
+        </div>
 
+        <h1 className="text-2xl font-bold mb-4 text-center">
+          AI Syllabus Statement Builder
+        </h1>
+
+        {/* Steps 1..8 */}
         {currentStep <= steps.length && (
           <>
-            {/* Show the current step */}
             <h2 className="text-lg font-semibold mb-2">
               {steps.find((s) => s.id === currentStep)?.title}
             </h2>
-            {steps
-              .find((s) => s.id === currentStep)
-              ?.options.map((option) => {
-                if (steps.find((s) => s.id === currentStep)?.type === "radio") {
-                  // Radio
-                  return (
+
+            {/* If it’s step 5, we have a special case */}
+            {steps.find((s) => s.id === currentStep)?.type === "rationale-step" && (
+              <div className="mb-4">
+                {/* Show the main radio categories */}
+                {steps
+                  .find((s) => s.id === currentStep)
+                  ?.options.map((option) => (
                     <div key={option} className="flex items-center mb-2">
                       <input
                         type="radio"
-                        name={steps.find((s) => s.id === currentStep)?.name}
+                        name="rationaleCategory"
                         value={option}
-                        checked={
-                          selections[
-                            steps.find((s) => s.id === currentStep)?.name
-                          ] === option
-                        }
-                        onChange={() =>
-                          handleRadioChange(
-                            steps.find((s) => s.id === currentStep)?.name,
-                            option
-                          )
-                        }
+                        checked={selections.rationaleCategory === option}
+                        onChange={() => handleRadioChange("rationaleCategory", option)}
                         className="mr-2"
                       />
                       <label>{option}</label>
                     </div>
-                  );
-                } else {
-                  // Checkbox
-                  return (
-                    <div key={option} className="flex items-center mb-2">
-                      <input
-                        type="checkbox"
-                        value={option}
-                        checked={selections[
-                          steps.find((s) => s.id === currentStep)?.name
-                        ].includes(option)}
-                        onChange={() =>
-                          handleCheckboxChange(
-                            steps.find((s) => s.id === currentStep)?.name,
-                            option
-                          )
-                        }
-                        className="mr-2"
-                      />
-                      <label>{option}</label>
-                    </div>
-                  );
-                }
-              })}
+                  ))}
 
-            {/* Navigation buttons */}
+                {/* If user picked the first option, show sub-options */}
+                {selections.rationaleCategory ===
+                  "Students are allowed to use AI tools freely as they choose because…" && (
+                  <div className="mt-4 ml-4 border-l pl-4">
+                    <p className="text-sm mb-2">Select your reasoning (choose any that apply):</p>
+                    {steps.find((s) => s.id === currentStep)?.subOptions.map((sub) => (
+                      <div key={sub} className="flex items-center mb-2">
+                        <input
+                          type="checkbox"
+                          value={sub}
+                          checked={selections.rationaleSub.includes(sub)}
+                          onChange={() => handleCheckboxChange("rationaleSub", sub)}
+                          className="mr-2"
+                        />
+                        <label>{sub}</label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* If it’s not the special rationale step, handle radio/checkbox in the usual way */}
+            {steps.find((s) => s.id === currentStep)?.type !== "rationale-step" &&
+              steps
+                .find((s) => s.id === currentStep)
+                ?.options.map((option) => {
+                  const stepData = steps.find((s) => s.id === currentStep);
+                  if (stepData?.type === "radio") {
+                    return (
+                      <div key={option} className="flex items-center mb-2">
+                        <input
+                          type="radio"
+                          name={stepData.name}
+                          value={option}
+                          checked={selections[stepData.name] === option}
+                          onChange={() => handleRadioChange(stepData.name, option)}
+                          className="mr-2"
+                        />
+                        <label>{option}</label>
+                      </div>
+                    );
+                  } else {
+                    // checkbox
+                    return (
+                      <div key={option} className="flex items-center mb-2">
+                        <input
+                          type="checkbox"
+                          value={option}
+                          checked={selections[stepData.name].includes(option)}
+                          onChange={() => handleCheckboxChange(stepData.name, option)}
+                          className="mr-2"
+                        />
+                        <label>{option}</label>
+                      </div>
+                    );
+                  }
+                })}
+
+            {/* Navigation buttons: Prev / Next / Preview */}
             <div className="mt-4 flex justify-between">
               <button
                 disabled={currentStep === 1}
@@ -362,13 +458,19 @@ function AISyllabusStatementBuilder() {
         {/* Step 9: PREVIEW */}
         {currentStep === 9 && (
           <div>
-            <h2 className="text-lg font-bold mb-2">
+            <h2 className="text-lg font-bold mb-2 text-center">
               Preview of Your Syllabus Statement
             </h2>
-            <p className="text-red-800 font-bold">
+            <p className="text-red-800 font-bold leading-relaxed mb-4">
               {generateParagraph()}
             </p>
-            <div className="mt-4 flex justify-center">
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={handleCopyStatement}
+                className="py-2 px-4 bg-green-600 text-white font-semibold rounded"
+              >
+                Copy this statement
+              </button>
               <button
                 onClick={() => setCurrentStep(1)}
                 className="py-2 px-4 bg-blue-600 text-white font-semibold rounded"
